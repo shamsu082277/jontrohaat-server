@@ -7,7 +7,7 @@ const envSchema = z.object({
   CLIENT_URL: z.string().default("http://localhost:3000"),
   MONGODB_URI: z.string().min(1).default("mongodb://127.0.0.1:27017/jontrohaat"),
   DB_NAME: z.string().min(1).default("jontrohaat"),
-  AUTH_USER_COLLECTION: z.string().min(1).default("users"),
+  AUTH_USER_COLLECTION: z.string().min(1).default("user"),
   BETTER_AUTH_JWKS_URL: z.string().url().default("http://localhost:3000/api/auth/jwks"),
   JWT_ISSUER: z.string().min(1).default("http://localhost:3000"),
   JWT_AUDIENCE: z.string().min(1).default("http://localhost:3000"),
