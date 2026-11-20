@@ -1,11 +1,22 @@
 import { env } from "../config/env.js";
 import { getDatabase } from "../config/db.js";
 import { HttpError, success } from "../utils/http.js";
-import { authUserFilter } from "../utils/objectId.js";
+import { authUserFilter, toObjectId } from "../utils/objectId.js";
 import { serializeEquipment } from "../utils/serialize.js";
 
+async function serializeAdminEquipment(db, item) {
+  const owner = await db.collection(env.AUTH_USER_COLLECTION).findOne(
+    { _id: item.ownerId },
+    { projection: { name: 1, email: 1, phone: 1, district: 1, division: 1, image: 1, createdAt: 1 } }
+  );
+  return serializeEquipment(item, owner || {});
+}
+
 export async function getUsers(req, res) {
-  const users = await getDatabase().collection(env.AUTH_USER_COLLECTION).find({}, { projection: { hashedPassword: 0, password: 0 } }).toArray();
+  const records = await getDatabase().collection(env.AUTH_USER_COLLECTION).find({}, {
+    projection: { name: 1, email: 1, role: 1, image: 1, phone: 1, district: 1, division: 1, createdAt: 1, updatedAt: 1 },
+  }).toArray();
+  const users = records.map((user) => ({ ...user, id: String(user._id), role: user.role || "customer" }));
   success(res, "Users retrieved", users);
 }
 
@@ -14,7 +25,10 @@ export async function changeUserRole(req, res) {
   const db = getDatabase();
   const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne(filter, { $set: { role: req.body.role, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "User not found");
-  const user = await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, { projection: { hashedPassword: 0, password: 0 } });
+  const user = await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, {
+    projection: { name: 1, email: 1, role: 1, image: 1, phone: 1, district: 1, division: 1, createdAt: 1, updatedAt: 1 },
+  });
+  if (user) user.id = String(user._id);
   success(res, "User role updated", user);
 }
 
@@ -23,7 +37,11 @@ export async function updateUserAccount(req, res) {
   const db = getDatabase();
   const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne(filter, { $set: { ...req.body, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "User not found");
-  success(res, "User account updated", await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, { projection: { hashedPassword: 0, password: 0 } }));
+  const user = await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, {
+    projection: { name: 1, email: 1, role: 1, image: 1, phone: 1, district: 1, division: 1, createdAt: 1, updatedAt: 1 },
+  });
+  if (user) user.id = String(user._id);
+  success(res, "User account updated", user);
 }
 
 export async function deleteUser(req, res) {
@@ -37,10 +55,7 @@ export async function deleteUser(req, res) {
 export async function getAllEquipment(req, res) {
   const db = getDatabase();
   const records = await db.collection("equipment").find({}).sort({ createdAt: -1 }).toArray();
-  const items = await Promise.all(records.map(async (item) => {
-    const owner = await db.collection(env.AUTH_USER_COLLECTION).findOne({ _id: item.ownerId }, { projection: { name: 1, email: 1, phone: 1, district: 1, division: 1, image: 1, createdAt: 1 } });
-    return serializeEquipment(item, owner || {});
-  }));
+  const items = await Promise.all(records.map((item) => serializeAdminEquipment(db, item)));
   success(res, "All equipment retrieved", items);
 }
 
@@ -49,7 +64,8 @@ export async function setEquipmentStatus(req, res) {
   const db = getDatabase();
   const result = await db.collection("equipment").updateOne({ _id: id }, { $set: { status: req.body.status, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "Equipment not found");
-  success(res, "Equipment status updated", await db.collection("equipment").findOne({ _id: id }));
+  const item = await db.collection("equipment").findOne({ _id: id });
+  success(res, "Equipment status updated", await serializeAdminEquipment(db, item));
 }
 
 export async function updateAllEquipment(req, res) {
@@ -57,7 +73,8 @@ export async function updateAllEquipment(req, res) {
   const db = getDatabase();
   const result = await db.collection("equipment").updateOne({ _id: id }, { $set: { ...req.body, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "Equipment not found");
-  success(res, "Equipment updated", await db.collection("equipment").findOne({ _id: id }));
+  const item = await db.collection("equipment").findOne({ _id: id });
+  success(res, "Equipment updated", await serializeAdminEquipment(db, item));
 }
 
 export async function deleteAllEquipment(req, res) {
@@ -67,7 +84,3 @@ export async function deleteAllEquipment(req, res) {
   success(res, "Equipment deleted", { deleted: true });
 }
 
-export async function getAllBookings(req, res) {
-  const items = await getDatabase().collection("bookings").find({}).sort({ createdAt: -1 }).toArray();
-  success(res, "Bookings retrieved", items);
-}

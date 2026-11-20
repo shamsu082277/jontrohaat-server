@@ -196,10 +196,11 @@ export async function updateBookingStatus(req, res) {
   if (["confirmed", "active", "completed"].includes(nextStatus) && booking.paymentStatus !== "paid") {
     throw new HttpError(409, "Booking must be paid before it can be confirmed or fulfilled");
   }
-  await db.collection("bookings").updateOne(
+  const updated = await db.collection("bookings").updateOne(
     { _id: id, bookingStatus: booking.bookingStatus },
     { $set: { bookingStatus: nextStatus, reservationReleased: nextStatus === "cancelled", updatedAt: new Date() } }
   );
+  if (!updated.matchedCount) throw new HttpError(409, "Booking was updated by another request");
   const [serialized] = await serializeBookings([await db.collection("bookings").findOne({ _id: id })]);
   success(res, "Booking status updated", serialized);
 }

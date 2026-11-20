@@ -45,6 +45,7 @@ export const bookingCreateSchema = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   quantity: z.coerce.number().int().positive(),
+  areaAcres: z.coerce.number().positive().optional(),
   contactNumber: z.string().trim().min(6).max(30),
   deliveryAddress: z.string().trim().min(5).max(300),
   notes: z.string().trim().max(1000).optional(),

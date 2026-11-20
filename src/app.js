@@ -14,6 +14,7 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import ownerRoutes from "./routes/ownerRoutes.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
 import { notFound, errorHandler } from "./middleware/error.js";
+import { HttpError } from "./utils/http.js";
 
 export function createApp() {
   const app = express();
@@ -24,21 +25,21 @@ export function createApp() {
   app.use(cors({
     origin(origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error("Origin is not allowed by CORS"));
+      callback(new HttpError(403, "Origin is not allowed by CORS"));
     },
     credentials: true,
   }));
-  app.post("/api/payments/webhook", express.raw({ type: "application/json", limit: "1mb" }), (req, res, next) => {
-    handleStripeWebhook(req, res).catch(next);
-  });
-  app.use(express.json({ limit: "1mb" }));
-  app.use(express.urlencoded({ extended: false, limit: "1mb" }));
   app.use("/api", rateLimit({
     windowMs: 60 * 1000,
     limit: 300,
     standardHeaders: "draft-7",
     legacyHeaders: false,
   }));
+  app.post("/api/payments/webhook", express.raw({ type: "application/json", limit: "1mb" }), (req, res, next) => {
+    handleStripeWebhook(req, res).catch(next);
+  });
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
   app.get("/api/health", async (req, res) => {
     let database = "disconnected";

@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { getStripe } from "../config/stripe.js";
 import { HttpError, success } from "../utils/http.js";
 import { toObjectId } from "../utils/objectId.js";
+import { randomUUID } from "node:crypto";
 
 function amountInMinorUnits(amount) {
   return Math.round(amount * 100);
@@ -87,57 +88,100 @@ export async function createCheckoutSession(req, res) {
     throw new HttpError(409, "The booking payment session has expired; create a new booking");
   }
 
-  const minimumExpiry = new Date(Date.now() + 30 * 60 * 1000);
-  if (booking.expiresAt < minimumExpiry) {
-    await db.collection("bookings").updateOne(
-      { _id: booking._id, bookingStatus: "pending", paymentStatus: "pending", stripeSessionId: { $exists: false } },
-      { $set: { expiresAt: minimumExpiry, updatedAt: new Date() } }
-    );
-    booking.expiresAt = minimumExpiry;
-  }
-  const frontend = env.CLIENT_URL.split(",")[0].trim().replace(/\/$/, "");
-  const checkout = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: [{
-      quantity: 1,
-      price_data: {
-        currency: env.STRIPE_CURRENCY.toLowerCase(),
-        unit_amount: amountInMinorUnits(booking.totalAmount),
-        product_data: { name: `Equipment rental booking ${String(booking._id)}` },
-      },
-    }],
-    metadata: { bookingId: String(booking._id), customerId: String(req.user.mongoId) },
-    client_reference_id: String(booking._id),
-    success_url: `${frontend}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${frontend}/payment/cancel?booking_id=${booking._id}`,
-    expires_at: Math.floor(booking.expiresAt.getTime() / 1000),
-  }, { idempotencyKey: `booking-checkout-${booking._id}` });
-  if (!checkout.url) throw new HttpError(502, "Stripe did not return a checkout URL");
-
   const now = new Date();
-  await db.collection("bookings").updateOne(
-    { _id: booking._id, paymentStatus: "pending", bookingStatus: "pending", stripeSessionId: { $exists: false } },
-    { $set: { stripeSessionId: checkout.id, updatedAt: now } }
-  );
-  const refreshed = await db.collection("bookings").findOne({ _id: booking._id });
-  if (refreshed.stripeSessionId !== checkout.id) throw new HttpError(409, "A checkout session was created concurrently; retry using the existing session");
-  await db.collection("payments").updateOne(
-    { stripeSessionId: checkout.id },
+  const checkoutLockToken = randomUUID();
+  const minimumCheckoutExpiry = new Date(now.getTime() + 31 * 60 * 1000);
+  const checkoutExpiresAt = booking.checkoutExpiresAt || new Date(Math.max(booking.expiresAt.getTime(), minimumCheckoutExpiry.getTime()));
+  const lock = await db.collection("bookings").updateOne(
+    {
+      _id: booking._id,
+      bookingStatus: "pending",
+      paymentStatus: "pending",
+      expiresAt: { $gt: now },
+      stripeSessionId: { $exists: false },
+      $or: [{ checkoutLockExpiresAt: { $lte: now } }, { checkoutLockExpiresAt: { $exists: false } }],
+    },
     {
       $set: {
-        bookingId: booking._id,
-        customerId: booking.customerId,
-        stripeSessionId: checkout.id,
-        stripePaymentIntentId: null,
-        amount: booking.totalAmount,
-        currency: env.STRIPE_CURRENCY.toLowerCase(),
-        status: "pending",
+        checkoutLockToken,
+        checkoutLockExpiresAt: new Date(now.getTime() + 2 * 60 * 1000),
+        checkoutExpiresAt,
+        expiresAt: checkoutExpiresAt,
         updatedAt: now,
       },
-      $setOnInsert: { createdAt: now },
-    },
-    { upsert: true }
+    }
   );
+  if (!lock.matchedCount) {
+    const latest = await db.collection("bookings").findOne({ _id: booking._id });
+    if (latest?.stripeSessionId) {
+      const existing = await stripe.checkout.sessions.retrieve(latest.stripeSessionId);
+      if (existing.status === "open" && existing.url) {
+        return success(res, "Existing checkout session retrieved", { checkoutUrl: existing.url, sessionId: existing.id });
+      }
+    }
+    throw new HttpError(409, "Checkout is already being prepared; retry shortly");
+  }
+  const lockedBooking = await db.collection("bookings").findOne({ _id: booking._id, checkoutLockToken });
+  if (!lockedBooking) throw new HttpError(409, "Checkout reservation could not be locked");
+
+  let checkout;
+  try {
+    const frontend = env.CLIENT_URL.split(",")[0].trim().replace(/\/$/, "");
+    checkout = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: env.STRIPE_CURRENCY.toLowerCase(),
+          unit_amount: amountInMinorUnits(booking.totalAmount),
+          product_data: { name: `Equipment rental booking ${String(booking._id)}` },
+        },
+      }],
+      metadata: { bookingId: String(booking._id), customerId: String(req.user.mongoId) },
+      client_reference_id: String(booking._id),
+      success_url: `${frontend}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontend}/payment/cancel?booking_id=${booking._id}`,
+      expires_at: Math.floor(lockedBooking.checkoutExpiresAt.getTime() / 1000),
+    }, { idempotencyKey: `booking-checkout-${booking._id}` });
+    if (!checkout.url) throw new HttpError(502, "Stripe did not return a checkout URL");
+
+    const updated = await db.collection("bookings").updateOne(
+      { _id: booking._id, checkoutLockToken },
+      { $set: { stripeSessionId: checkout.id, updatedAt: new Date() }, $unset: { checkoutLockToken: "", checkoutLockExpiresAt: "" } }
+    );
+    if (!updated.matchedCount) {
+      const latest = await db.collection("bookings").findOne({ _id: booking._id });
+      if (latest?.stripeSessionId !== checkout.id) throw new HttpError(409, "Checkout reservation changed; retry the request");
+    }
+  } catch (error) {
+    await db.collection("bookings").updateOne(
+      { _id: booking._id, checkoutLockToken },
+      { $unset: { checkoutLockToken: "", checkoutLockExpiresAt: "" } }
+    );
+    throw error;
+  }
+
+  try {
+    await db.collection("payments").updateOne(
+      { stripeSessionId: checkout.id },
+      {
+        $set: {
+          bookingId: booking._id,
+          customerId: booking.customerId,
+          stripeSessionId: checkout.id,
+          stripePaymentIntentId: null,
+          amount: booking.totalAmount,
+          currency: env.STRIPE_CURRENCY.toLowerCase(),
+          status: "pending",
+          updatedAt: now,
+        },
+        $setOnInsert: { createdAt: now },
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    if (error?.code !== 11000 || !await db.collection("payments").findOne({ stripeSessionId: checkout.id })) throw error;
+  }
   success(res, "Checkout session created", { checkoutUrl: checkout.url, sessionId: checkout.id }, 201);
 }
 
@@ -167,26 +211,35 @@ export async function handleStripeWebhook(req, res) {
     throw new HttpError(400, "Invalid Stripe webhook signature");
   }
   const db = getDatabase();
-  if (await db.collection("stripeWebhookEvents").findOne({ eventId: event.id })) {
-    return success(res, "Webhook event already processed", { received: true });
-  }
-
-  const object = event.data.object;
-  const supported = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "checkout.session.expired"];
-  if (!supported.includes(event.type)) {
-    await db.collection("stripeWebhookEvents").insertOne({ eventId: event.id, type: event.type, processedAt: new Date() });
-    return success(res, "Webhook event ignored", { received: true });
-  }
-
-  const checkout = await getStripe().checkout.sessions.retrieve(object.id);
-  let status = "pending";
-  if (checkout.payment_status === "paid") status = "paid";
-  else if (checkout.status === "expired" || event.type === "checkout.session.async_payment_failed") status = "failed";
-  const result = await applySessionResult(checkout, status);
   try {
-    await db.collection("stripeWebhookEvents").insertOne({ eventId: event.id, type: event.type, processedAt: new Date() });
+    await db.collection("stripeWebhookEvents").insertOne({ eventId: event.id, type: event.type, status: "processing", receivedAt: new Date() });
   } catch (error) {
-    if (error?.code !== 11000) throw error;
+    if (error?.code === 11000) return success(res, "Webhook event already received", { received: true });
+    throw error;
   }
-  success(res, "Webhook event processed", { received: true, ...result });
+
+  const supported = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "checkout.session.expired"];
+  try {
+    if (!supported.includes(event.type)) {
+      await db.collection("stripeWebhookEvents").updateOne(
+        { eventId: event.id },
+        { $set: { status: "processed", processedAt: new Date() } }
+      );
+      return success(res, "Webhook event ignored", { received: true });
+    }
+
+    const checkout = await getStripe().checkout.sessions.retrieve(event.data.object.id);
+    let status = "pending";
+    if (checkout.payment_status === "paid") status = "paid";
+    else if (checkout.status === "expired" || event.type === "checkout.session.async_payment_failed") status = "failed";
+    const result = await applySessionResult(checkout, status);
+    await db.collection("stripeWebhookEvents").updateOne(
+      { eventId: event.id },
+      { $set: { status: "processed", processedAt: new Date() } }
+    );
+    success(res, "Webhook event processed", { received: true, ...result });
+  } catch (error) {
+    await db.collection("stripeWebhookEvents").deleteOne({ eventId: event.id, status: "processing" });
+    throw error;
+  }
 }

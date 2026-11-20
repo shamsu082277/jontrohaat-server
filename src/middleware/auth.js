@@ -7,41 +7,43 @@ import { HttpError } from "../utils/http.js";
 const jwks = createRemoteJWKSet(new URL(env.BETTER_AUTH_JWKS_URL));
 
 export async function verifyToken(req, res, next) {
-  try {
-    const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) throw new HttpError(401, "Missing bearer token");
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return next(new HttpError(401, "Missing bearer token"));
 
+  let payload;
+  try {
     const token = header.slice(7).trim();
-    const { payload } = await jwtVerify(token, jwks, {
+    const verified = await jwtVerify(token, jwks, {
       issuer: env.JWT_ISSUER,
       audience: env.JWT_AUDIENCE,
     });
-
-    const subject = typeof payload.sub === "string" ? payload.sub : payload.id ?? payload.userId;
-    if (typeof subject !== "string" || !subject) throw new HttpError(401, "Token has no valid user identity");
-
-    const db = getDatabase();
-    const userCollection = db.collection(env.AUTH_USER_COLLECTION);
-    const identities = [{ id: subject }, { _id: subject }];
-    if (ObjectId.isValid(subject)) identities.push({ _id: new ObjectId(subject) });
-
-    const user = await userCollection.findOne({ $or: identities });
-    if (!user) throw new HttpError(401, "Authenticated user does not exist");
-
-    req.user = {
-      id: user.id || (user._id ? String(user._id) : subject),
-      mongoId: user._id,
-      email: user.email,
-      name: user.name,
-      role: typeof user.role === "string" ? user.role : "customer",
-    };
-    next();
+    payload = verified.payload;
+    if (!Number.isFinite(payload.exp)) return next(new HttpError(401, "Token expiration claim is required"));
   } catch (error) {
     if (error instanceof HttpError) return next(error);
-    const code = error?.code;
+    const code = typeof error?.code === "string" ? error.code : "";
     const message = code === "ERR_JWT_EXPIRED" ? "Token has expired" : "Invalid or unverifiable token";
-    next(new HttpError(401, message));
+    return next(new HttpError(401, message));
   }
+
+  const subject = typeof payload.sub === "string" ? payload.sub : payload.id ?? payload.userId;
+  if (typeof subject !== "string" || !subject) return next(new HttpError(401, "Token has no valid user identity"));
+
+  const userCollection = getDatabase().collection(env.AUTH_USER_COLLECTION);
+  const identities = [{ id: subject }, { _id: subject }];
+  if (ObjectId.isValid(subject)) identities.push({ _id: new ObjectId(subject) });
+
+  const user = await userCollection.findOne({ $or: identities });
+  if (!user) return next(new HttpError(401, "Authenticated user does not exist"));
+
+  req.user = {
+    id: user.id || (user._id ? String(user._id) : subject),
+    mongoId: user._id,
+    email: user.email,
+    name: user.name,
+    role: typeof user.role === "string" ? user.role : "customer",
+  };
+  return next();
 }
 
 function requireRole(...roles) {

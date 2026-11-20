@@ -6,14 +6,14 @@ export async function listFavorites(req, res) {
   const db = getDatabase();
   const ids = await db.collection("favorites").find({ userId: req.user.mongoId }).toArray();
   const equipmentIds = ids.map((item) => item.equipmentId);
-  const items = equipmentIds.length ? await db.collection("equipment").find({ _id: { $in: equipmentIds } }).toArray() : [];
+  const items = equipmentIds.length ? await db.collection("equipment").find({ _id: { $in: equipmentIds }, status: "approved" }).toArray() : [];
   success(res, "Favorites retrieved", items);
 }
 
 export async function addFavorite(req, res) {
   const equipmentId = toObjectId(req.params.equipmentId, "equipment id");
   const db = getDatabase();
-  if (!await db.collection("equipment").findOne({ _id: equipmentId })) throw new HttpError(404, "Equipment not found");
+  if (!await db.collection("equipment").findOne({ _id: equipmentId, status: "approved" })) throw new HttpError(404, "Equipment not found");
   try {
     await db.collection("favorites").insertOne({ userId: req.user.mongoId, equipmentId, createdAt: new Date() });
   } catch (error) {

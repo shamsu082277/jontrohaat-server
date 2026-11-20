@@ -17,9 +17,6 @@ const upload = multer({
 
 const router = Router();
 router.post("/image", verifyToken, (req, res, next) => {
-  if (req.user.role !== "owner" && req.user.role !== "admin") {
-    return next(new HttpError(403, "Only owners and admins can upload equipment images"));
-  }
   upload.single("image")(req, res, (error) => {
     if (error) {
       if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
