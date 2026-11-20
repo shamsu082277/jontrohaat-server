@@ -1,7 +1,7 @@
 import { env } from "../config/env.js";
 import { getDatabase } from "../config/db.js";
 import { HttpError, success } from "../utils/http.js";
-import { toObjectId } from "../utils/objectId.js";
+import { authUserFilter } from "../utils/objectId.js";
 
 export async function getUsers(req, res) {
   const users = await getDatabase().collection(env.AUTH_USER_COLLECTION).find({}, { projection: { hashedPassword: 0, password: 0 } }).toArray();
@@ -9,26 +9,26 @@ export async function getUsers(req, res) {
 }
 
 export async function changeUserRole(req, res) {
-  const id = toObjectId(req.params.id, "user id");
+  const filter = authUserFilter(req.params.id);
   const db = getDatabase();
-  const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne({ _id: id }, { $set: { role: req.body.role, updatedAt: new Date() } });
+  const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne(filter, { $set: { role: req.body.role, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "User not found");
-  const user = await db.collection(env.AUTH_USER_COLLECTION).findOne({ _id: id }, { projection: { hashedPassword: 0, password: 0 } });
+  const user = await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, { projection: { hashedPassword: 0, password: 0 } });
   success(res, "User role updated", user);
 }
 
 export async function updateUserAccount(req, res) {
-  const id = toObjectId(req.params.id, "user id");
+  const filter = authUserFilter(req.params.id);
   const db = getDatabase();
-  const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne({ _id: id }, { $set: { ...req.body, updatedAt: new Date() } });
+  const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne(filter, { $set: { ...req.body, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "User not found");
-  success(res, "User account updated", await db.collection(env.AUTH_USER_COLLECTION).findOne({ _id: id }, { projection: { hashedPassword: 0, password: 0 } }));
+  success(res, "User account updated", await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, { projection: { hashedPassword: 0, password: 0 } }));
 }
 
 export async function deleteUser(req, res) {
-  const id = toObjectId(req.params.id, "user id");
-  if (String(id) === req.user.id || id.equals(req.user.mongoId)) throw new HttpError(400, "An admin cannot delete their own account through this endpoint");
-  const result = await getDatabase().collection(env.AUTH_USER_COLLECTION).deleteOne({ _id: id });
+  const id = req.params.id;
+  if (String(id) === req.user.id || String(id) === String(req.user.mongoId)) throw new HttpError(400, "An admin cannot delete their own account through this endpoint");
+  const result = await getDatabase().collection(env.AUTH_USER_COLLECTION).deleteOne(authUserFilter(id));
   if (!result.deletedCount) throw new HttpError(404, "User not found");
   success(res, "User account deleted", { deleted: true });
 }

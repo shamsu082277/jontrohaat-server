@@ -2,6 +2,7 @@ import { getDatabase, getMongoClient } from "../config/db.js";
 import { env } from "../config/env.js";
 import { HttpError, success } from "../utils/http.js";
 import { toObjectId } from "../utils/objectId.js";
+import { env } from "../config/env.js";
 
 const activeStatuses = ["confirmed", "active"];
 
@@ -12,6 +13,32 @@ function rentalDuration(startDate, endDate, rentalType) {
 
 function isSameUser(left, right) {
   return String(left) === String(right);
+}
+
+async function serializeBookings(items) {
+  const db = getDatabase();
+  return Promise.all(items.map(async (booking) => {
+    const [equipment, customer] = await Promise.all([
+      db.collection("equipment").findOne({ _id: booking.equipmentId }),
+      db.collection(env.AUTH_USER_COLLECTION).findOne({ _id: booking.customerId }, { projection: { name: 1, email: 1 } }),
+    ]);
+    return {
+      ...booking,
+      _id: String(booking._id),
+      equipmentId: String(booking.equipmentId),
+      customerId: String(booking.customerId),
+      ownerId: String(booking.ownerId),
+      renterId: String(booking.customerId),
+      renterName: customer?.name || "Customer",
+      renterEmail: customer?.email || "",
+      renterPhone: booking.contactNumber,
+      equipmentTitle: equipment?.title || "Equipment",
+      equipmentImage: equipment?.image || equipment?.images?.[0],
+      durationDays: booking.rentalDuration,
+      dailyRate: equipment?.rentalPrice || 0,
+      totalPrice: booking.totalAmount,
+    };
+  }));
 }
 
 export async function releaseExpiredReservations() {
@@ -120,21 +147,22 @@ export async function createBooking(req, res) {
   } finally {
     await session.endSession();
   }
-  success(res, "Booking created; complete payment before the reservation expires", created, 201);
+  const [serialized] = await serializeBookings([created]);
+  success(res, "Booking created; complete payment before the reservation expires", serialized, 201);
 }
 
 export async function getMyBookings(req, res) {
-  const items = await getDatabase().collection("bookings").find({ customerId: req.user.mongoId }).sort({ createdAt: -1 }).toArray();
+  const items = await serializeBookings(await getDatabase().collection("bookings").find({ customerId: req.user.mongoId }).sort({ createdAt: -1 }).toArray());
   success(res, "My bookings retrieved", items);
 }
 
 export async function getOwnerBookings(req, res) {
-  const items = await getDatabase().collection("bookings").find({ ownerId: req.user.mongoId }).sort({ createdAt: -1 }).toArray();
+  const items = await serializeBookings(await getDatabase().collection("bookings").find({ ownerId: req.user.mongoId }).sort({ createdAt: -1 }).toArray());
   success(res, "Owner bookings retrieved", items);
 }
 
 export async function getAdminBookings(req, res) {
-  const items = await getDatabase().collection("bookings").find({}).sort({ createdAt: -1 }).toArray();
+  const items = await serializeBookings(await getDatabase().collection("bookings").find({}).sort({ createdAt: -1 }).toArray());
   success(res, "All bookings retrieved", items);
 }
 
@@ -144,5 +172,6 @@ export async function getBooking(req, res) {
   if (!item) throw new HttpError(404, "Booking not found");
   const ownsBooking = isSameUser(item.customerId, req.user.mongoId) || isSameUser(item.ownerId, req.user.mongoId);
   if (req.user.role !== "admin" && !ownsBooking) throw new HttpError(403, "You do not have permission to view this booking");
-  success(res, "Booking retrieved", item);
+  const [serialized] = await serializeBookings([item]);
+  success(res, "Booking retrieved", serialized);
 }
