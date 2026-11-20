@@ -41,8 +41,12 @@ async function createIndexes(database) {
     database.collection("bookings").createIndex({ customerId: 1, createdAt: -1 }),
     database.collection("bookings").createIndex({ ownerId: 1, createdAt: -1 }),
     database.collection("bookings").createIndex({ equipmentId: 1 }),
+    database.collection("bookings").createIndex({ equipmentId: 1, bookingStatus: 1, startDate: 1, endDate: 1 }),
+    database.collection("bookings").createIndex({ paymentStatus: 1, expiresAt: 1 }),
     database.collection("favorites").createIndex({ userId: 1, equipmentId: 1 }, { unique: true }),
     database.collection("payments").createIndex({ bookingId: 1 }),
+    database.collection("payments").createIndex({ stripeSessionId: 1 }, { unique: true, sparse: true }),
     database.collection("payments").createIndex({ customerId: 1, createdAt: -1 }),
+    database.collection("stripeWebhookEvents").createIndex({ eventId: 1 }, { unique: true }),
   ]);
 }

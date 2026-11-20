@@ -42,10 +42,12 @@ export const confirmSchema = z.object({ confirm: z.literal(true) }).strict();
 
 export const bookingCreateSchema = z.object({
   equipmentId: objectId,
-  startDate: z.string().datetime(),
-  endDate: z.string().datetime(),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
   quantity: z.coerce.number().int().positive(),
   contactNumber: z.string().trim().min(6).max(30),
   deliveryAddress: z.string().trim().min(5).max(300),
   notes: z.string().trim().max(1000).optional(),
 }).strict();
+
+export const checkoutSchema = z.object({ bookingId: objectId }).strict();

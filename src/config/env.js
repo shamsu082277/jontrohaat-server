@@ -11,6 +11,11 @@ const envSchema = z.object({
   BETTER_AUTH_JWKS_URL: z.string().url().default("http://localhost:3000/api/auth/jwks"),
   JWT_ISSUER: z.string().min(1).default("http://localhost:3000"),
   JWT_AUDIENCE: z.string().min(1).default("http://localhost:3000"),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_CURRENCY: z.string().default("bdt"),
+  IMGBB_API_KEY: z.string().optional(),
+  RESERVATION_MINUTES: z.coerce.number().int().positive().default(30),
 });
 
 const parsed = envSchema.safeParse(process.env);
