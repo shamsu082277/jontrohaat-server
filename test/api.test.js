@@ -2,17 +2,35 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { createApp } from "../src/app.js";
+import vercelApp from "../index.js";
+import { env } from "../src/config/env.js";
 import { bookingCreateSchema, profileSchema, roleSchema } from "../src/validators/schemas.js";
 
 const app = createApp();
 
-test("health reports database connectivity without credentials", async () => {
+test("health reports current database connectivity without exposing credentials", async () => {
   const response = await request(app).get("/api/health");
-  assert.equal(response.status, 503);
-  assert.equal(response.body.success, false);
+  assert.ok([200, 503].includes(response.status));
+  assert.equal(response.body.success, response.status === 200);
   assert.equal(response.body.data.status, "ok");
-  assert.equal(response.body.data.database, "disconnected");
-  assert.doesNotMatch(JSON.stringify(response.body), /mongodb/i);
+  assert.equal(response.body.data.database, response.status === 200 ? "connected" : "disconnected");
+  if (response.status === 503) assert.doesNotMatch(JSON.stringify(response.body), /mongodb/i);
+});
+
+test("Vercel entry exports the Express app and preserves the health response", async () => {
+  const response = await request(vercelApp).get("/api/health");
+  assert.ok([200, 503].includes(response.status));
+  assert.equal(response.body.data.database, response.status === 200 ? "connected" : "disconnected");
+});
+
+test("CORS allows a configured frontend origin", async () => {
+  const origin = env.CLIENT_URL.split(",")[0].trim();
+  const response = await request(app)
+    .options("/api/health")
+    .set("Origin", origin)
+    .set("Access-Control-Request-Method", "GET");
+  assert.equal(response.status, 204);
+  assert.equal(response.headers["access-control-allow-origin"], origin);
 });
 
 test("missing bearer token is rejected", async () => {

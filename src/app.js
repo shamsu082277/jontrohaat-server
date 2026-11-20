@@ -3,7 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
-import { getDatabase } from "./config/db.js";
+import { connectDatabase, getDatabase } from "./config/db.js";
 import equipmentRoutes from "./routes/equipmentRoutes.js";
 import favoriteRoutes from "./routes/favoriteRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
@@ -16,9 +16,13 @@ import { handleStripeWebhook } from "./controllers/paymentController.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import { HttpError } from "./utils/http.js";
 
-export function createApp() {
-  const app = express();
+export function createApp(options) {
+  return configureApp(express(), options);
+}
+
+export function configureApp(app, { connectOnRequest = false } = {}) {
   app.disable("x-powered-by");
+  if (process.env.VERCEL === "1" || process.env.VERCEL === "true") app.set("trust proxy", 1);
   app.use(helmet());
 
   const allowedOrigins = env.CLIENT_URL.split(",").map((origin) => origin.trim()).filter(Boolean);
@@ -35,6 +39,17 @@ export function createApp() {
     standardHeaders: "draft-7",
     legacyHeaders: false,
   }));
+  if (connectOnRequest) {
+    app.use("/api", async (req, res, next) => {
+      try {
+        await connectDatabase();
+        next();
+      } catch {
+        if (req.path === "/health") return next();
+        next(new HttpError(503, "Database unavailable"));
+      }
+    });
+  }
   app.post("/api/payments/webhook", express.raw({ type: "application/json", limit: "1mb" }), (req, res, next) => {
     handleStripeWebhook(req, res).catch(next);
   });

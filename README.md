@@ -20,7 +20,7 @@ The server can start when MongoDB is unavailable so `/api/health` can report a `
 | --- | --- |
 | `PORT` | HTTP port; defaults to `5000` |
 | `NODE_ENV` | `development`, `test`, or `production` |
-| `CLIENT_URL` | Exact CORS-allowed frontend origin(s), comma-separated |
+| `CLIENT_URL` | Exact CORS-allowed frontend origin(s), comma-separated; use localhost in development and deployed HTTPS origins in production |
 | `MONGODB_URI` | MongoDB Atlas connection string; server-only |
 | `DB_NAME` | Application database; defaults to `jontrohaat` |
 | `AUTH_USER_COLLECTION` | Exact Better Auth collection; defaults to `user` |
@@ -67,6 +67,20 @@ The webhook route is registered with Express raw-body parsing before JSON middle
 - `npm test` covers health behavior, missing/invalid authentication, role-protected route access, request schema rejection, webhook configuration failure, and 404 response format.
 - `npm start` starts the API. Verify with `curl http://localhost:5000/api/health`.
 - Real Atlas, JWKS, Stripe webhook, and ImgBB integration require valid service credentials; they are not mocked by the test suite.
+
+## Vercel deployment
+
+The repository root `index.js` exports the existing Express application as the Vercel handler. It connects to MongoDB on requests, reuses the MongoDB client and connection pool across warm invocations, and does not call `listen()`. Vercel's Express framework support discovers this entry point; no `vercel.json` or extra deployment dependency is needed. The local listener remains in `src/server.js`.
+
+1. Import this backend repository into Vercel. Use the repository root as the project root and allow Vercel to detect Express.
+2. Add the server-only variables from `.env.example` in Vercel Project Settings → Environment Variables. Use production HTTPS values for `CLIENT_URL`, `BETTER_AUTH_JWKS_URL`, and `JWT_ISSUER`; `NODE_ENV` is set by Vercel. Do not set `PORT` for the serverless deployment.
+3. Configure the MongoDB Atlas network access policy for the deployed function and confirm the database user has access to `jontrohaat`.
+4. Deploy with the Vercel Git integration or run `npx vercel --prod` from this repository root.
+5. Verify `https://<backend-project>.vercel.app/api/health` returns HTTP 200 after MongoDB is reachable. A 503 indicates the API is running but its database is not connected.
+6. In the frontend Vercel project, set `NEXT_PUBLIC_API_URL=https://<backend-project>.vercel.app` and redeploy. The frontend client adds `/api/...` paths itself.
+7. Set backend `CLIENT_URL` to the exact frontend production origin (and any explicitly needed preview origins). Configure the Stripe test webhook to call `https://<backend-project>.vercel.app/api/payments/webhook`.
+
+Set `MONGODB_URI`, Better Auth JWKS/issuer/audience, Stripe test credentials, webhook signing secret, and ImgBB key only in the backend Vercel environment. Keep preview and production values scoped to the appropriate Vercel environments. The deployment has not been performed or verified from this repository.
 
 ## Render preparation
 

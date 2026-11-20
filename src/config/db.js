@@ -3,6 +3,7 @@ import { env } from "./env.js";
 
 let client;
 let db;
+let connectionPromise;
 
 export async function connectDatabase() {
   if (db) return db;
@@ -10,11 +11,16 @@ export async function connectDatabase() {
   if (!uri || uri === "your_mongodb_connection_string") {
     throw new Error("MONGODB_URI is not configured");
   }
-  client = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 });
-  await client.connect();
-  db = client.db(env.DB_NAME);
-  await createIndexes(db);
-  return db;
+  if (!connectionPromise) {
+    connectionPromise = openDatabase(uri);
+  }
+
+  const pendingConnection = connectionPromise;
+  try {
+    return await pendingConnection;
+  } finally {
+    if (connectionPromise === pendingConnection) connectionPromise = undefined;
+  }
 }
 
 export function getDatabase() {
@@ -30,6 +36,26 @@ export async function closeDatabase() {
   if (client) await client.close();
   client = undefined;
   db = undefined;
+  connectionPromise = undefined;
+}
+
+async function openDatabase(uri) {
+  const nextClient = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 });
+  try {
+    await nextClient.connect();
+    const nextDatabase = nextClient.db(env.DB_NAME);
+    await createIndexes(nextDatabase);
+    client = nextClient;
+    db = nextDatabase;
+    return nextDatabase;
+  } catch (error) {
+    try {
+      await nextClient.close();
+    } catch (closeError) {
+      console.error("MongoDB client cleanup failed:", closeError.message);
+    }
+    throw error;
+  }
 }
 
 async function createIndexes(database) {
