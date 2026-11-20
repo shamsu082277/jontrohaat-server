@@ -20,7 +20,7 @@ const envSchema = z.object({
   AUTH_USER_COLLECTION: z.string().min(1).default("user"),
   BETTER_AUTH_JWKS_URL: z.string().url().default("http://localhost:3000/api/auth/jwks"),
   JWT_ISSUER: z.string().url().default("http://localhost:3000"),
-  JWT_AUDIENCE: z.string().url().default("http://localhost:3000"),
+  JWT_AUDIENCE: z.string().min(1).default("http://localhost:3000"),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_CURRENCY: z.string().regex(/^bdt$/i).default("bdt"),
@@ -44,6 +44,14 @@ if (parsed.data.NODE_ENV === "production") {
   ];
   if (localSettings.some((value) => /localhost|127\.0\.0\.1|your_mongodb_connection_string/i.test(value))) {
     throw new Error("Production requires configured public URLs and a production MongoDB connection string");
+  }
+  const publicUrls = [
+    ...parsed.data.CLIENT_URL.split(","),
+    parsed.data.BETTER_AUTH_JWKS_URL,
+    parsed.data.JWT_ISSUER,
+  ];
+  if (publicUrls.some((value) => new URL(value.trim()).protocol !== "https:")) {
+    throw new Error("Production frontend and authentication URLs must use HTTPS");
   }
 }
 
