@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
+import { adminAnalytics } from "../controllers/analyticsController.js";
 import { roleSchema, statusSchema, confirmSchema, profileSchema, equipmentUpdateSchema } from "../validators/schemas.js";
 import { getUsers, changeUserRole, updateUserAccount, deleteUser, getAllEquipment, setEquipmentStatus, updateAllEquipment, deleteAllEquipment, getAllBookings } from "../controllers/adminController.js";
 
@@ -16,6 +17,8 @@ router.get("/equipment", (req, res, next) => getAllEquipment(req, res).catch(nex
 router.patch("/equipment/:id/status", validate(statusSchema), (req, res, next) => setEquipmentStatus(req, res).catch(next));
 router.patch("/equipment/:id", validate(equipmentUpdateSchema), (req, res, next) => updateAllEquipment(req, res).catch(next));
 router.delete("/equipment/:id", validate(confirmSchema), (req, res, next) => deleteAllEquipment(req, res).catch(next));
+router.get("/bookings", (req, res, next) => getAllBookings(req, res).catch(next));
 router.get("/rentals", (req, res, next) => getAllBookings(req, res).catch(next));
+router.get("/analytics", (req, res, next) => adminAnalytics(req, res).catch(next));
 
 export default router;
