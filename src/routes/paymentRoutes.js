@@ -6,5 +6,6 @@ import { createCheckoutSession, verifyCheckoutSession } from "../controllers/pay
 
 const router = Router();
 router.post("/checkout-session", verifyToken, verifyRenter, validate(checkoutSchema), (req, res, next) => createCheckoutSession(req, res).catch(next));
+router.post("/create-checkout-session", verifyToken, verifyRenter, validate(checkoutSchema), (req, res, next) => createCheckoutSession(req, res).catch(next));
 router.get("/verify-session", verifyToken, verifyRenter, (req, res, next) => verifyCheckoutSession(req, res).catch(next));
 export default router;

@@ -51,3 +51,4 @@ export const bookingCreateSchema = z.object({
 }).strict();
 
 export const checkoutSchema = z.object({ bookingId: objectId }).strict();
+export const bookingStatusSchema = z.object({ bookingStatus: z.enum(["confirmed", "active", "completed", "cancelled"]) }).strict();

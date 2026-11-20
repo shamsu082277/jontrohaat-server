@@ -2,7 +2,6 @@ import { getDatabase, getMongoClient } from "../config/db.js";
 import { env } from "../config/env.js";
 import { HttpError, success } from "../utils/http.js";
 import { toObjectId } from "../utils/objectId.js";
-import { env } from "../config/env.js";
 
 const activeStatuses = ["confirmed", "active"];
 
@@ -174,4 +173,33 @@ export async function getBooking(req, res) {
   if (req.user.role !== "admin" && !ownsBooking) throw new HttpError(403, "You do not have permission to view this booking");
   const [serialized] = await serializeBookings([item]);
   success(res, "Booking retrieved", serialized);
+}
+
+export async function updateBookingStatus(req, res) {
+  const id = toObjectId(req.params.id, "booking id");
+  const db = getDatabase();
+  const filter = { _id: id };
+  if (req.user.role === "owner") filter.ownerId = req.user.mongoId;
+  const booking = await db.collection("bookings").findOne(filter);
+  if (!booking) throw new HttpError(404, "Booking not found");
+  const allowedTransitions = {
+    pending: ["cancelled"],
+    confirmed: ["active", "cancelled"],
+    active: ["completed", "cancelled"],
+    completed: [],
+    cancelled: [],
+  };
+  const nextStatus = req.body.bookingStatus;
+  if (!allowedTransitions[booking.bookingStatus]?.includes(nextStatus)) {
+    throw new HttpError(409, "Invalid booking status transition");
+  }
+  if (["confirmed", "active", "completed"].includes(nextStatus) && booking.paymentStatus !== "paid") {
+    throw new HttpError(409, "Booking must be paid before it can be confirmed or fulfilled");
+  }
+  await db.collection("bookings").updateOne(
+    { _id: id, bookingStatus: booking.bookingStatus },
+    { $set: { bookingStatus: nextStatus, reservationReleased: nextStatus === "cancelled", updatedAt: new Date() } }
+  );
+  const [serialized] = await serializeBookings([await db.collection("bookings").findOne({ _id: id })]);
+  success(res, "Booking status updated", serialized);
 }

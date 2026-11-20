@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { verifyToken, verifyOwner, verifyAdmin } from "../middleware/auth.js";
+import { verifyToken } from "../middleware/auth.js";
 import { uploadImage } from "../controllers/uploadController.js";
 import { HttpError } from "../utils/http.js";
 

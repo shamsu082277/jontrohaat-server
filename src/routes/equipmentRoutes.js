@@ -10,7 +10,12 @@ router.get("/", listEquipment);
 router.get("/featured", featuredEquipment);
 router.get("/:id", (req, res, next) => {
   const header = req.headers.authorization;
-  if (header?.startsWith("Bearer ")) return verifyToken(req, res, () => getEquipment(req, res).catch(next));
+  if (header?.startsWith("Bearer ")) {
+    return verifyToken(req, res, (error) => {
+      if (error) return next(error);
+      getEquipment(req, res).catch(next);
+    });
+  }
   return getEquipment(req, res).catch(next);
 });
 router.post("/", verifyToken, verifyOwner, validate(equipmentCreateSchema), (req, res, next) => createEquipment(req, res).catch(next));

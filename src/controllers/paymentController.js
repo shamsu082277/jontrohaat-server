@@ -87,10 +87,17 @@ export async function createCheckoutSession(req, res) {
     throw new HttpError(409, "The booking payment session has expired; create a new booking");
   }
 
+  const minimumExpiry = new Date(Date.now() + 30 * 60 * 1000);
+  if (booking.expiresAt < minimumExpiry) {
+    await db.collection("bookings").updateOne(
+      { _id: booking._id, bookingStatus: "pending", paymentStatus: "pending", stripeSessionId: { $exists: false } },
+      { $set: { expiresAt: minimumExpiry, updatedAt: new Date() } }
+    );
+    booking.expiresAt = minimumExpiry;
+  }
   const frontend = env.CLIENT_URL.split(",")[0].trim().replace(/\/$/, "");
   const checkout = await stripe.checkout.sessions.create({
     mode: "payment",
-    currency: env.STRIPE_CURRENCY.toLowerCase(),
     line_items: [{
       quantity: 1,
       price_data: {
@@ -135,7 +142,7 @@ export async function createCheckoutSession(req, res) {
 }
 
 export async function verifyCheckoutSession(req, res) {
-  const sessionId = typeof req.query.session_id === "string" ? req.query.session_id : "";
+  const sessionId = typeof req.query.session_id === "string" ? req.query.session_id : typeof req.query.sessionId === "string" ? req.query.sessionId : "";
   if (!sessionId || !sessionId.startsWith("cs_")) throw new HttpError(400, "Invalid checkout session id");
   const db = getDatabase();
   const booking = await db.collection("bookings").findOne({ stripeSessionId: sessionId, customerId: req.user.mongoId });
