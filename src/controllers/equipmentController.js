@@ -62,7 +62,7 @@ export async function listEquipment(req, res) {
 }
 
 export async function featuredEquipment(req, res) {
-  const items = await serializeMany(await getDatabase().collection("equipment").find({ status: "approved", availableQuantity: { $gt: 0 } }).sort({ createdAt: -1 }).limit(10).toArray());
+  const items = await serializeMany(await getDatabase().collection("equipment").find({ status: "approved", availableQuantity: { $gt: 0 } }).sort({ createdAt: -1 }).limit(6).toArray());
   success(res, "Featured equipment retrieved", items);
 }
 

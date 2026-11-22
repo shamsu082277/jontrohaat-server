@@ -22,13 +22,9 @@ export function serializeEquipment(item, owner = {}) {
     quantity: item.availableQuantity,
     isAvailable: item.availableQuantity > 0,
     ownerName: owner.name || "",
-    ownerEmail: owner.email || "",
-    ownerPhone: owner.phone || "",
     owner: {
       id: ownerId,
       name: owner.name || "",
-      phone: owner.phone || "",
-      email: owner.email || "",
       district: owner.district || location.district || "",
       division: owner.division || location.division || "",
       verified: false,

@@ -36,6 +36,7 @@ const equipmentFields = {
     }),
   ]),
   rentalPrice: z.coerce.number().positive(),
+  securityDeposit: z.coerce.number().min(0).optional(),
   rentalType: z.enum(["per_day", "per_hour", "per_acre"]),
   availableQuantity: z.coerce.number().int().min(0),
   condition: z.string().trim().min(1).max(80),
@@ -61,7 +62,7 @@ export const profileSchema = z.object({
 }).strict();
 
 export const roleSchema = z.object({ role: z.enum(["customer", "owner", "admin"]) }).strict();
-export const statusSchema = z.object({ status: z.enum(["approved", "rejected"]) }).strict();
+export const statusSchema = z.object({ status: z.enum(["pending", "approved", "rejected"]) }).strict();
 export const confirmSchema = z.object({ confirm: z.literal(true) }).strict();
 
 export const bookingCreateSchema = z.object({

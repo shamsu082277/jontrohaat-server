@@ -4,12 +4,14 @@ import request from "supertest";
 import { createApp } from "../src/app.js";
 import vercelApp from "../index.js";
 import { env } from "../src/config/env.js";
+import { serializeEquipment } from "../src/utils/serialize.js";
 import {
   bookingCreateSchema,
   equipmentCreateSchema,
   equipmentUpdateSchema,
   profileSchema,
   roleSchema,
+  statusSchema,
 } from "../src/validators/schemas.js";
 
 const app = createApp();
@@ -71,6 +73,10 @@ test("request schemas reject protected fields and invalid booking details", () =
   assert.equal(profileSchema.safeParse({ role: "admin" }).success, false);
   assert.equal(roleSchema.safeParse({ role: "superuser" }).success, false);
   assert.equal(bookingCreateSchema.safeParse({ equipmentId: "not-an-id", quantity: -1 }).success, false);
+  assert.equal(statusSchema.safeParse({ status: "pending" }).success, true);
+  assert.equal(statusSchema.safeParse({ status: "approved" }).success, true);
+  assert.equal(statusSchema.safeParse({ status: "rejected" }).success, true);
+  assert.equal(statusSchema.safeParse({ status: "published" }).success, false);
 });
 
 test("equipment image URLs accept HTTPS, normalize legacy image fields, and reject HTTP", () => {
@@ -81,6 +87,7 @@ test("equipment image URLs accept HTTPS, normalize legacy image fields, and reje
     location: { division: "Dhaka", district: "Dhaka" },
     rentalPrice: 100,
     rentalType: "per_day",
+    securityDeposit: 0,
     availableQuantity: 1,
     condition: "Good",
     images: ["https://images.example.com/tractor.jpg", "https://cdn.example.com/tractor-side.jpg"],
@@ -110,6 +117,30 @@ test("profile image URLs accept HTTPS only", () => {
   assert.equal(profileSchema.safeParse({ image: "https://cdn.example.com/profile.jpg" }).success, true);
   assert.equal(profileSchema.safeParse({ image: "http://cdn.example.com/profile.jpg" }).success, false);
   assert.equal(profileSchema.safeParse({ image: "https://user:pass@cdn.example.com/profile.jpg" }).success, false);
+});
+
+test("equipment serialization returns display fields without owner contact details", () => {
+  const equipment = serializeEquipment({
+    _id: "65f000000000000000000001",
+    ownerId: "65f000000000000000000002",
+    title: "Test tractor",
+    rentalPrice: 1200,
+    availableQuantity: 2,
+    location: { division: "Dhaka", district: "Dhaka" },
+    images: ["https://images.example.com/tractor.jpg"],
+  }, {
+    name: "Equipment owner",
+    phone: "01712345678",
+    email: "owner@example.com",
+  });
+
+  assert.equal(equipment.pricePerDay, 1200);
+  assert.equal(equipment.quantity, 2);
+  assert.equal(equipment.ownerName, "Equipment owner");
+  assert.equal("ownerPhone" in equipment, false);
+  assert.equal("ownerEmail" in equipment, false);
+  assert.equal("phone" in equipment.owner, false);
+  assert.equal("email" in equipment.owner, false);
 });
 
 test("payment webhook is not acknowledged without configured Stripe secrets", async () => {
