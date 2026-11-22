@@ -23,6 +23,25 @@ export async function getUsers(req, res) {
 export async function changeUserRole(req, res) {
   const filter = authUserFilter(req.params.id);
   const db = getDatabase();
+  const targetUser = await db.collection(env.AUTH_USER_COLLECTION).findOne(filter);
+  if (!targetUser) throw new HttpError(404, "User not found");
+
+  // Single-admin policy enforcement
+  if (req.body.role === "admin") {
+    const existingAdmin = await db.collection(env.AUTH_USER_COLLECTION).findOne({ role: "admin" });
+    if (existingAdmin && String(existingAdmin._id) !== String(targetUser._id)) {
+      throw new HttpError(400, "Only one administrator is allowed. An existing administrator account is already active.");
+    }
+  }
+
+  // Prevent admin from accidentally demoting themselves if they are the only admin
+  if (targetUser.role === "admin" && req.body.role !== "admin") {
+    const adminCount = await db.collection(env.AUTH_USER_COLLECTION).countDocuments({ role: "admin" });
+    if (adminCount <= 1) {
+      throw new HttpError(400, "Cannot change role of the sole platform administrator.");
+    }
+  }
+
   const result = await db.collection(env.AUTH_USER_COLLECTION).updateOne(filter, { $set: { role: req.body.role, updatedAt: new Date() } });
   if (!result.matchedCount) throw new HttpError(404, "User not found");
   const user = await db.collection(env.AUTH_USER_COLLECTION).findOne(filter, {
