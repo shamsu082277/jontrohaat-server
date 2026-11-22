@@ -97,6 +97,7 @@ test("equipment image URLs accept HTTPS, normalize legacy image fields, and reje
   if (legacy.success) assert.deepEqual(legacy.data.images, [listing.images[0]]);
 
   assert.equal(equipmentCreateSchema.safeParse({ ...listing, images: ["http://images.example.com/tractor.jpg"] }).success, false);
+  assert.equal(equipmentCreateSchema.safeParse({ ...listing, images: ["https://user:pass@images.example.com/tractor.jpg"] }).success, false);
   const titleOnlyUpdate = equipmentUpdateSchema.safeParse({ title: "Updated tractor" });
   assert.equal(titleOnlyUpdate.success, true);
   if (titleOnlyUpdate.success) {
@@ -108,6 +109,7 @@ test("equipment image URLs accept HTTPS, normalize legacy image fields, and reje
 test("profile image URLs accept HTTPS only", () => {
   assert.equal(profileSchema.safeParse({ image: "https://cdn.example.com/profile.jpg" }).success, true);
   assert.equal(profileSchema.safeParse({ image: "http://cdn.example.com/profile.jpg" }).success, false);
+  assert.equal(profileSchema.safeParse({ image: "https://user:pass@cdn.example.com/profile.jpg" }).success, false);
 });
 
 test("payment webhook is not acknowledged without configured Stripe secrets", async () => {

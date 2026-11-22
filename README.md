@@ -1,87 +1,376 @@
-# JontroHaat Express API
+# JontroHaat – Backend API
 
-Express.js API for the JontroHaat Next.js client. It uses MongoDB's native driver and the same Better Auth user collection as the frontend (`user`, Better Auth's default model name with `usePlural: false`). The user `role` field is read from MongoDB for every protected request.
+A RESTful backend API for **JontroHaat**, an agricultural equipment rental platform built to connect equipment owners with customers in Bangladesh.
 
-## Local setup
+The backend handles authentication, equipment management, bookings, payments, image hosting, user management, and administrative operations.
 
-Requirements: Node.js 20+ and a MongoDB Atlas cluster (or a local replica set for transactions).
+## Live Deployment
 
-1. Copy `.env.example` to `.env` and set the service credentials.
-2. Keep `AUTH_USER_COLLECTION=user` unless Better Auth's adapter model name is intentionally changed.
-3. Configure `MONGODB_URI` to a replica-set deployment; Atlas provides transaction support.
-4. From this directory run `npm install`, `npm test`, and `npm run dev`.
-5. Set the frontend's `NEXT_PUBLIC_API_URL=http://localhost:5000`.
+| Service | URL |
+|---|---|
+| Frontend | https://jontrohaat.vercel.app |
+| Backend API | https://jontrohaat-server.onrender.com |
+| API Health Check | https://jontrohaat-server.onrender.com/api/health |
+| Frontend Repository | https://github.com/shamsu082277/jontrohaat |
+| Backend Repository | https://github.com/shamsu082277/jontrohaat-server |
 
-The server can start when MongoDB is unavailable so `/api/health` can report a `503` database status. Booking writes require transaction support and return `503` when the configured MongoDB server cannot run transactions.
+## Technology Stack
 
-## Environment variables
+- **Runtime:** Node.js 20+
+- **Backend Framework:** Express.js
+- **Database:** MongoDB Atlas
+- **Authentication:** Better Auth JWT
+- **Validation:** Zod
+- **Security:** Helmet, CORS, Rate Limiting
+- **Payment Gateway:** Stripe (Test Mode)
+- **Image Hosting:** ImgBB
+- **Deployment:** Render
 
-| Variable | Purpose |
-| --- | --- |
-| `PORT` | HTTP port; defaults to `5000` |
-| `NODE_ENV` | `development`, `test`, or `production` |
-| `CLIENT_URL` | Exact CORS-allowed frontend origin(s), comma-separated; use localhost in development and deployed HTTPS origins in production |
-| `MONGODB_URI` | MongoDB Atlas connection string; server-only |
-| `DB_NAME` | Application database; defaults to `jontrohaat` |
-| `AUTH_USER_COLLECTION` | Exact Better Auth collection; defaults to `user` |
-| `BETTER_AUTH_JWKS_URL` | Better Auth JWT plugin JWKS endpoint |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | Required JWT claims |
-| `RESERVATION_MINUTES` | Unpaid booking reservation lifetime; defaults to `60` |
-| `STRIPE_SECRET_KEY` | Stripe **test-mode** secret key; server-only |
-| `STRIPE_WEBHOOK_SECRET` | Stripe test webhook signing secret; server-only |
-| `STRIPE_CURRENCY` | Checkout currency; `bdt` |
-| `IMGBB_API_KEY` | ImgBB API key; server-only |
+## Core Features
 
-Never put MongoDB, Stripe secret, webhook, or ImgBB keys in `NEXT_PUBLIC_*` variables. Live Bangladesh merchant payouts are not asserted or enabled by this assignment implementation.
+### Authentication & Authorization
+- Better Auth JWT verification.
+- Secure authenticated API endpoints.
+- Role-based access control.
+- Customer, Owner, and Admin permissions.
+- User profile management.
 
-## API
+### Equipment Management
+- Create, update, and delete equipment listings.
+- Browse approved equipment.
+- Search, filter, sort, and paginate equipment.
+- Featured equipment.
+- Equipment approval and moderation.
+- Owner-specific listing management.
 
-All JSON responses use `{ "success": boolean, "message": string, "data": ... }` on success and `{ "success": false, "message": string }` on errors. Protected routes use `Authorization: Bearer <Better Auth JWT>`.
+### Booking Management
+- Create equipment rental bookings.
+- Validate booking dates and availability.
+- Prevent conflicting reservations.
+- Transaction-protected booking operations.
+- Booking status management.
+- Automatic expiration of unpaid reservations.
+- Separate customer, owner, and admin booking access.
 
-| Method and path | Access | Purpose |
-| --- | --- | --- |
-| `GET /api/health` | Public | Server and MongoDB ping status |
-| `GET /api/equipment` | Public | Approved equipment, search/filter/sort/page |
-| `GET /api/equipment/featured` | Public | Featured approved equipment |
-| `GET /api/equipment/:id` | Public / owner / admin | Equipment details; non-approved records hidden from public |
-| `POST /api/equipment` | Owner | Create pending listing |
-| `PATCH, DELETE /api/equipment/:id` | Owner / admin | Manage listing; owners are restricted to their own |
-| `GET, POST, DELETE /api/favorites` | Customer | List/add/remove favorites (`POST` and `DELETE` use `/:equipmentId`) |
-| `GET, PATCH /api/users/me` | Authenticated | Read/update allowed profile fields |
-| `POST /api/bookings` | Customer | Create a date-checked, transaction-protected unpaid reservation |
-| `GET /api/bookings/my`, `GET /api/bookings/:id` | Customer / owner / admin | Own or authorized booking access |
-| `GET /api/owner/bookings`, `PATCH /api/owner/bookings/:id/status` | Owner | Own bookings and allowed fulfilment transitions |
-| `GET /api/admin/bookings`, `PATCH /api/admin/bookings/:id/status` | Admin | All bookings and status management |
-| `POST /api/payments/checkout-session` | Customer | Create/reuse Stripe Checkout for an owned booking |
-| `POST /api/payments/webhook` | Stripe signature | Raw-body signed, idempotent Checkout webhook |
-| `GET /api/payments/verify-session?session_id=...` | Customer | Retrieve actual Stripe status for the customer's session |
-| `POST /api/uploads/image` | Authenticated | Validate and proxy PNG/JPEG/WEBP to ImgBB (5MB max) |
-| `GET /api/owner/analytics` | Owner | Owner-scoped inventory, rentals, paid earnings |
-| `GET /api/admin/analytics` | Admin | Platform metrics, paid revenue, monthly bookings, categories |
-| `/api/admin/users`, `/api/admin/equipment` | Admin | User and listing management |
+### Payment Integration
+- Stripe Checkout integration.
+- Create and reuse checkout sessions.
+- Secure Stripe webhook verification.
+- Payment status verification.
+- Idempotent payment processing.
+- Paid booking verification.
 
-The webhook route is registered with Express raw-body parsing before JSON middleware. Payment success is established by Stripe's retrieved Checkout Session, not the browser return URL. Pending bookings expire and are released by scheduled cleanup.
+**Note:** Stripe is configured for test-mode integration. Live Bangladesh merchant payouts are not enabled or guaranteed by this implementation.
 
-## Local integration checks
+### Image Management
+- ImgBB image hosting integration.
+- Authenticated image upload endpoint.
+- PNG, JPEG, and WEBP validation.
+- Maximum upload size: 5 MB.
+- Images are hosted externally rather than stored directly in MongoDB.
 
-- `npm test` covers health behavior, missing/invalid authentication, role-protected route access, request schema rejection, webhook configuration failure, and 404 response format.
-- `npm start` starts the API. Verify with `curl http://localhost:5000/api/health`.
-- Real Atlas, JWKS, Stripe webhook, and ImgBB integration require valid service credentials; they are not mocked by the test suite.
+### Dashboards & Analytics
+- Owner inventory and rental analytics.
+- Owner earnings based on paid bookings.
+- Admin platform statistics.
+- Monthly booking reports.
+- Equipment category statistics.
+- User and equipment administration.
 
-## Vercel deployment
+## Project Structure
 
-The repository root `index.js` exports the existing Express application as the Vercel handler. It connects to MongoDB on requests, reuses the MongoDB client and connection pool across warm invocations, and does not call `listen()`. Vercel's Express framework support discovers this entry point; no `vercel.json` or extra deployment dependency is needed. The local listener remains in `src/server.js`.
+```text
+jontrohaat-server/
+│
+├── index.js
+├── package.json
+├── package-lock.json
+├── .env.example
+├── .gitignore
+├── render.yaml
+│
+└── src/
+    ├── server.js
+    ├── app.js
+    │
+    ├── config/
+    │
+    ├── controllers/
+    │
+    ├── middleware/
+    │
+    ├── routes/
+    │
+    ├── services/
+    │
+    ├── validators/
+    │
+    └── utils/
+```
 
-1. Import this backend repository into Vercel. Use the repository root as the project root and allow Vercel to detect Express.
-2. Add the server-only variables from `.env.example` in Vercel Project Settings → Environment Variables. Use production HTTPS values for `CLIENT_URL`, `BETTER_AUTH_JWKS_URL`, and `JWT_ISSUER`; `NODE_ENV` is set by Vercel. Do not set `PORT` for the serverless deployment.
-3. Configure the MongoDB Atlas network access policy for the deployed function and confirm the database user has access to `jontrohaat`.
-4. Deploy with the Vercel Git integration or run `npx vercel --prod` from this repository root.
-5. Verify `https://<backend-project>.vercel.app/api/health` returns HTTP 200 after MongoDB is reachable. A 503 indicates the API is running but its database is not connected.
-6. In the frontend Vercel project, set `NEXT_PUBLIC_API_URL=https://<backend-project>.vercel.app` and redeploy. The frontend client adds `/api/...` paths itself.
-7. Set backend `CLIENT_URL` to the exact frontend production origin (and any explicitly needed preview origins). Configure the Stripe test webhook to call `https://<backend-project>.vercel.app/api/payments/webhook`.
+*The structure above represents the main application organization; individual files may vary as the project evolves.*
 
-Set `MONGODB_URI`, Better Auth JWKS/issuer/audience, Stripe test credentials, webhook signing secret, and ImgBB key only in the backend Vercel environment. Keep preview and production values scoped to the appropriate Vercel environments. The deployment has not been performed or verified from this repository.
+## Installation & Local Development
 
-## Render preparation
+### Prerequisites
 
-`render.yaml` describes the Node web service and its health check. Set every `sync: false` value in Render's environment UI. The service has not been deployed from this repository; a public API URL must be supplied after deployment.
+- Node.js 20 or later
+- npm
+- MongoDB Atlas account or a local MongoDB replica set
+- Stripe account (for payment testing)
+- ImgBB API key
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/shamsu082277/jontrohaat-server.git
+
+cd jontrohaat-server
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure Environment Variables
+
+Create a `.env` file in the backend root directory.
+
+Copy the example configuration:
+
+```bash
+cp .env.example .env
+```
+
+Configure the required environment variables:
+
+```env
+PORT=5000
+NODE_ENV=development
+
+CLIENT_URL=http://localhost:3000
+
+MONGODB_URI=your_mongodb_connection_string
+DB_NAME=jontrohaat
+AUTH_USER_COLLECTION=user
+
+BETTER_AUTH_JWKS_URL=your_better_auth_jwks_url
+JWT_ISSUER=your_jwt_issuer
+JWT_AUDIENCE=your_jwt_audience
+
+RESERVATION_MINUTES=60
+
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+STRIPE_CURRENCY=bdt
+
+IMGBB_API_KEY=your_imgbb_api_key
+```
+
+Never commit your actual `.env` file or expose server-side credentials in frontend environment variables.
+
+### 4. Start the Development Server
+
+```bash
+npm run dev
+```
+
+The backend will run at:
+
+```text
+http://localhost:5000
+```
+
+### 5. Run Tests
+
+```bash
+npm test
+```
+
+### 6. Start Production Mode Locally
+
+```bash
+npm start
+```
+
+## API Documentation
+
+All API responses follow a consistent JSON response structure.
+
+**Successful response:**
+
+```json
+{
+  "success": true,
+  "message": "Operation successful",
+  "data": {}
+}
+```
+
+**Error response:**
+
+```json
+{
+  "success": false,
+  "message": "Something went wrong"
+}
+```
+
+### API Endpoints
+
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/api/health` | Public |
+| GET | `/api/equipment` | Public |
+| GET | `/api/equipment/featured` | Public |
+| GET | `/api/equipment/:id` | Public / Owner / Admin |
+| POST | `/api/equipment` | Owner |
+| PATCH | `/api/equipment/:id` | Owner / Admin |
+| DELETE | `/api/equipment/:id` | Owner / Admin |
+| GET | `/api/favorites` | Customer |
+| POST | `/api/favorites/:equipmentId` | Customer |
+| DELETE | `/api/favorites/:equipmentId` | Customer |
+| GET | `/api/users/me` | Authenticated |
+| PATCH | `/api/users/me` | Authenticated |
+| POST | `/api/bookings` | Customer |
+| GET | `/api/bookings/my` | Customer |
+| GET | `/api/bookings/:id` | Authorized User |
+| GET | `/api/owner/bookings` | Owner |
+| PATCH | `/api/owner/bookings/:id/status` | Owner |
+| GET | `/api/admin/bookings` | Admin |
+| PATCH | `/api/admin/bookings/:id/status` | Admin |
+| POST | `/api/payments/checkout-session` | Customer |
+| POST | `/api/payments/webhook` | Stripe |
+| GET | `/api/payments/verify-session` | Customer |
+| POST | `/api/uploads/image` | Authenticated |
+| GET | `/api/owner/analytics` | Owner |
+| GET | `/api/admin/analytics` | Admin |
+| / | `/api/admin/users` | Admin |
+| / | `/api/admin/equipment` | Admin |
+
+### Authentication Headers
+
+Protected endpoints require a valid Better Auth JWT.
+
+```http
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
+
+The backend verifies JWT signatures and retrieves user roles from the shared MongoDB user collection.
+
+## Deployment – Render
+
+The backend is deployed on Render.
+
+**Production API URL:**
+
+```text
+https://jontrohaat-server.onrender.com
+```
+
+### Render Configuration
+
+| Setting | Value |
+|---|---|
+| Service Type | Web Service |
+| Runtime | Node.js |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+
+### Environment Variables on Render
+
+Add the following server-side variables in:
+
+**Render Dashboard → Your Web Service → Environment**
+
+- `NODE_ENV=production`
+- `CLIENT_URL=https://jontrohaat.vercel.app`
+- `MONGODB_URI`
+- `DB_NAME=jontrohaat`
+- `AUTH_USER_COLLECTION=user`
+- `BETTER_AUTH_JWKS_URL`
+- `JWT_ISSUER`
+- `JWT_AUDIENCE`
+- `RESERVATION_MINUTES=60`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_CURRENCY=bdt`
+- `IMGBB_API_KEY`
+
+Use the actual values from your service configuration. Never publish secret credentials in GitHub.
+
+### Verify Deployment
+
+Open the health endpoint:
+
+https://jontrohaat-server.onrender.com/api/health
+
+A successful response should confirm that the server is running and MongoDB is connected.
+
+**Important:** Render free-tier services may spin down after inactivity, causing a delay on the first request.
+
+## Frontend Integration
+
+The backend is connected to the Next.js frontend.
+
+Frontend repository:
+
+https://github.com/shamsu082277/jontrohaat
+
+Configure this environment variable in the frontend:
+
+```env
+NEXT_PUBLIC_API_URL=https://jontrohaat-server.onrender.com
+```
+
+For local development:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+The frontend API client is responsible for attaching the `/api/...` endpoint paths.
+
+## Security & Reliability
+
+- JWT-based authentication.
+- Role-based authorization.
+- Request validation.
+- CORS configuration.
+- HTTP security headers.
+- Rate limiting.
+- Secure payment webhook verification.
+- MongoDB transaction protection for booking operations.
+- Ownership checks for protected resources.
+- Server-side environment variable management.
+
+## Testing
+
+The backend test suite covers:
+
+- Health endpoint behavior.
+- Authentication failures.
+- Invalid JWT handling.
+- Role-protected routes.
+- Request validation.
+- Payment webhook configuration failures.
+- Standard 404 error responses.
+
+Real MongoDB, Better Auth JWKS, Stripe, and ImgBB integrations require valid service credentials.
+
+## Project Information
+
+**Project:** JontroHaat  
+**Type:** Agricultural Equipment Rental Platform  
+**Backend:** Node.js & Express.js  
+**Database:** MongoDB  
+**Frontend:** Next.js  
+**Deployment:** Render  
+**Developer:** Shamsu Uddin
+
+---
+
+**JontroHaat – Making Agricultural Equipment Rental Easier.**

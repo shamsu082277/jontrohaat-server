@@ -2,7 +2,10 @@ import { z } from "zod";
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid id");
 const secureImageUrl = z.string().trim().url().refine(
-  (value) => new URL(value).protocol === "https:",
+  (value) => {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password;
+  },
   "Image URLs must use HTTPS"
 );
 const optionalImageUrl = secureImageUrl.or(z.literal(""));
