@@ -4,7 +4,13 @@ import request from "supertest";
 import { createApp } from "../src/app.js";
 import vercelApp from "../index.js";
 import { env } from "../src/config/env.js";
-import { bookingCreateSchema, profileSchema, roleSchema } from "../src/validators/schemas.js";
+import {
+  bookingCreateSchema,
+  equipmentCreateSchema,
+  equipmentUpdateSchema,
+  profileSchema,
+  roleSchema,
+} from "../src/validators/schemas.js";
 
 const app = createApp();
 
@@ -67,9 +73,51 @@ test("request schemas reject protected fields and invalid booking details", () =
   assert.equal(bookingCreateSchema.safeParse({ equipmentId: "not-an-id", quantity: -1 }).success, false);
 });
 
+test("equipment image URLs accept HTTPS, normalize legacy image fields, and reject HTTP", () => {
+  const listing = {
+    title: "Test tractor",
+    description: "A test equipment listing with enough detail.",
+    category: "Tractors",
+    location: { division: "Dhaka", district: "Dhaka" },
+    rentalPrice: 100,
+    rentalType: "per_day",
+    availableQuantity: 1,
+    condition: "Good",
+    images: ["https://images.example.com/tractor.jpg", "https://cdn.example.com/tractor-side.jpg"],
+  };
+  const parsed = equipmentCreateSchema.safeParse(listing);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.deepEqual(parsed.data.images, listing.images);
+    assert.equal(parsed.data.image, listing.images[0]);
+  }
+
+  const legacy = equipmentCreateSchema.safeParse({ ...listing, images: undefined, image: listing.images[0] });
+  assert.equal(legacy.success, true);
+  if (legacy.success) assert.deepEqual(legacy.data.images, [listing.images[0]]);
+
+  assert.equal(equipmentCreateSchema.safeParse({ ...listing, images: ["http://images.example.com/tractor.jpg"] }).success, false);
+  const titleOnlyUpdate = equipmentUpdateSchema.safeParse({ title: "Updated tractor" });
+  assert.equal(titleOnlyUpdate.success, true);
+  if (titleOnlyUpdate.success) {
+    assert.equal("image" in titleOnlyUpdate.data, false);
+    assert.equal("images" in titleOnlyUpdate.data, false);
+  }
+});
+
+test("profile image URLs accept HTTPS only", () => {
+  assert.equal(profileSchema.safeParse({ image: "https://cdn.example.com/profile.jpg" }).success, true);
+  assert.equal(profileSchema.safeParse({ image: "http://cdn.example.com/profile.jpg" }).success, false);
+});
+
 test("payment webhook is not acknowledged without configured Stripe secrets", async () => {
   const response = await request(app).post("/api/payments/webhook").set("Content-Type", "application/json").send("{}");
   assert.equal(response.status, 503);
+});
+
+test("legacy file upload endpoint is no longer available", async () => {
+  const response = await request(app).post("/api/uploads/image").send({});
+  assert.equal(response.status, 404);
 });
 
 test("unknown route uses consistent 404 format", async () => {
