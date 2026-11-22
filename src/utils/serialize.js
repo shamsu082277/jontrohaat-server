@@ -2,14 +2,19 @@ export function serializeEquipment(item, owner = {}) {
   const location = typeof item.location === "object" && item.location !== null
     ? item.location
     : { division: "", district: String(item.location || "") };
-  const image = item.image || item.images?.[0] || "";
+  const images = Array.isArray(item.images)
+    ? item.images
+    : item.image
+      ? [item.image]
+      : [];
+  const image = images[0] || "";
   const ownerId = String(item.ownerId);
   return {
     ...item,
     _id: String(item._id),
     ownerId,
     image,
-    images: image ? [image] : [],
+    images,
     location,
     rentalPrice: item.rentalPrice,
     pricePerDay: item.rentalPrice,

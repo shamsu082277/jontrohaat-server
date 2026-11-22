@@ -1,8 +1,25 @@
 import { z } from "zod";
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid id");
+const secureImageUrl = z.string().trim().url().refine(
+  (value) => new URL(value).protocol === "https:",
+  "Image URLs must use HTTPS"
+);
+const optionalImageUrl = secureImageUrl.or(z.literal(""));
+const imageFields = {
+  image: optionalImageUrl.optional(),
+  images: z.array(secureImageUrl).max(10).optional(),
+};
 
-export const equipmentCreateSchema = z.object({
+function normalizeEquipmentImages(data, defaultToEmpty = false) {
+  if (!("image" in data) && !("images" in data)) {
+    return defaultToEmpty ? { ...data, image: "", images: [] } : data;
+  }
+  const images = data.images ?? (data.image ? [data.image] : []);
+  return { ...data, image: images[0] || "", images };
+}
+
+const equipmentFields = {
   title: z.string().trim().min(2).max(120),
   description: z.string().trim().min(10).max(4000),
   category: z.string().trim().min(1).max(80),
@@ -21,11 +38,15 @@ export const equipmentCreateSchema = z.object({
   condition: z.string().trim().min(1).max(80),
   brand: z.string().trim().max(80).optional(),
   model: z.string().trim().max(80).optional(),
-  image: z.string().url().or(z.literal("")).optional(),
+  ...imageFields,
   rentalTerms: z.string().trim().max(2000).optional(),
-}).strict();
+};
 
-export const equipmentUpdateSchema = equipmentCreateSchema.partial().strict();
+export const equipmentCreateSchema = z.object(equipmentFields).strict()
+  .transform((data) => normalizeEquipmentImages(data, true));
+
+export const equipmentUpdateSchema = z.object(equipmentFields).partial().strict()
+  .transform((data) => normalizeEquipmentImages(data));
 
 export const profileSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
@@ -33,7 +54,7 @@ export const profileSchema = z.object({
   address: z.string().trim().max(300).optional(),
   district: z.string().trim().max(80).optional(),
   division: z.string().trim().max(80).optional(),
-  image: z.string().url().or(z.literal("")).optional(),
+  image: optionalImageUrl.optional(),
 }).strict();
 
 export const roleSchema = z.object({ role: z.enum(["customer", "owner", "admin"]) }).strict();

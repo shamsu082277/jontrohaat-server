@@ -10,7 +10,6 @@ import profileRoutes from "./routes/profileRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
-import uploadRoutes from "./routes/uploadRoutes.js";
 import ownerRoutes from "./routes/ownerRoutes.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
 import { notFound, errorHandler } from "./middleware/error.js";
@@ -86,7 +85,6 @@ export function configureApp(app, { connectOnRequest = false } = {}) {
   app.use("/api/bookings", bookingRoutes);
   app.use("/api/owner", ownerRoutes);
   app.use("/api/payments", paymentRoutes);
-  app.use("/api/uploads", uploadRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

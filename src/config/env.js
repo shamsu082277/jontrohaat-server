@@ -24,7 +24,6 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_CURRENCY: z.string().regex(/^bdt$/i).default("bdt"),
-  IMGBB_API_KEY: z.string().optional(),
   RESERVATION_MINUTES: z.coerce.number().int().positive().max(1410).default(60),
 });
 
