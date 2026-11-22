@@ -18,6 +18,10 @@ async function start() {
     }, 60 * 1000);
   } catch (error) {
     console.error(`MongoDB connection unavailable: ${error.message}`);
+    if (env.NODE_ENV === "production") {
+      process.exitCode = 1;
+      return;
+    }
   }
 
   server.listen(env.PORT, () => {

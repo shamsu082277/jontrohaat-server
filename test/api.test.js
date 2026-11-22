@@ -8,6 +8,16 @@ import { bookingCreateSchema, profileSchema, roleSchema } from "../src/validator
 
 const app = createApp();
 
+test("root confirms that the server is running", async () => {
+  const response = await request(app).get("/");
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    success: true,
+    message: "JontroHaat server is running",
+    data: { status: "ok" },
+  });
+});
+
 test("health reports current database connectivity without exposing credentials", async () => {
   const response = await request(app).get("/api/health");
   assert.ok([200, 503].includes(response.status));
